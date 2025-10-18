@@ -1,0 +1,9 @@
+You are verifying whether the predicted brand from Phase 1 is correct.
+
+Given:
+- Detected brand: <phase1_brand>
+- Ground truth brand: <folder_brand_name>
+
+Respond in the following format:
+BrandMatched: <Yes/No>
+Explanation: <Short justification why it's a match or mismatch>
