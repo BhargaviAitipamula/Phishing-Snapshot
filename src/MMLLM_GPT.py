@@ -66,7 +66,6 @@ class MMLLM_GPT:
         self.str_api_key = str_api_key
         self.dict_phase1_system_msg = {}
         self.dict_phase1_res_format = {}
-        self.dict_phase2_system_msg = {}
         self.str_model = "gpt-4o-mini"
         self.client = OpenAI(api_key=self.str_api_key)
         self.str_input_dir_base = "../data"
@@ -103,16 +102,6 @@ class MMLLM_GPT:
                 "content": [{"type": "text", "text": str_res_format}],
             }
 
-        str_phase2_prompt_path = dict_system_prompt_path.get(Phase2Mode.Phase2)
-        assert str_phase2_prompt_path, f"Unknown Input mode {Phase2Mode.Phase2}"
-
-        with open(str_phase2_prompt_path, encoding='utf-8') as f:
-            str_phase2_system_prompt = f.read()
-            self.dict_phase2_system_msg = {
-                "role": "system",
-                "content": [{"type": "text", "text": str_phase2_system_prompt}],
-            }
-
     def create_identification_prompt(self, input_mode: InputMode, encoded_image, html_content):
         user_msg = {"role": "user", "content": []}
         if input_mode == InputMode.SS:
@@ -124,17 +113,6 @@ class MMLLM_GPT:
             user_msg["content"].append({"type": "text", "text": f"Here is the html information: {html_content}"})
         return [self.dict_phase1_system_msg, user_msg, self.dict_phase1_res_format]
 
-    # def create_brandcheck_prompt(self, groundtruth, prediction):
-    #     return [
-    #         self.dict_phase2_system_msg,
-    #         {"role": "user", "content": [{"type": "text", "text": f"Ground Truth: \"{groundtruth}\"\n\"Prediction:\"{prediction}\""}]}
-    #     ]
-    def create_brandcheck_prompt(self, groundtruth, prediction):
-        # self.dict_phase2_system_msg is guaranteed by the call in phase2_phishing_classification
-        return [
-            self.dict_phase2_system_msg,
-            {"role": "user", "content": f'Ground Truth: "{groundtruth}"\nPrediction: "{prediction}"'}
-        ]
 
     def query(self, messages):
         return self.client.chat.completions.create(
@@ -235,20 +213,6 @@ class MMLLM_GPT:
         # Continue with processing if we found valid folders
         list_data_dir = valid_folders
         
-            # Use live_capture folder
-        if input_dataset == InputDataset.LiveCapture:
-            base_path = os.path.join(self.str_input_dir_base, dataset_name)
-        else:
-            base_path = os.path.join(self.str_input_dir_base, dataset_name)
-
-        if not os.path.exists(base_path):
-            print(f"[ERROR] Cannot find dataset directory: {base_path}")
-            return
-
-        # Walk folders like normal datasets
-        list_data_dir = load_unzipped_data(base_path)  # ✅ This gets html + ss
-
-
         for data_dir in tqdm(list_data_dir, desc=f"{dataset_name}"):
             data_dir = os.path.normpath(data_dir)
             path_parts = data_dir.split(os.sep)
@@ -293,101 +257,6 @@ class MMLLM_GPT:
                 with open(output_file, 'w', encoding='utf-8') as f:
                     json.dump(result, f, indent=4)
 
-                    
-  
-    # def phase2_phishing_classification(self, input_dataset: InputDataset):
-    #     dataset_name = input_dataset.value
-    #     summary_path = os.path.join(self.str_output_dir_base, dataset_name, 'Phase2_GPT', "Phase2_Res_Summary.csv")
-    #     os.makedirs(os.path.dirname(summary_path), exist_ok=True)
-    
-    #     print(f"[DEBUG] dataset_name = '{dataset_name}'")
-    #     print(f"[DEBUG] self.str_output_dir_base = '{self.str_output_dir_base}'")
-    #     print(f"[DEBUG] Current working directory: {os.getcwd()}")
-    
-    #     # ✅ Load Phase 2 system prompt once so self.dict_phase2_system_msg is valid
-    #     self.load_prompt_text(InputMode.SS)
-    
-    #     # Check Phase1 output directory
-    #     phase1_dir = os.path.join(self.str_output_dir_base, dataset_name, 'Phase1_GPT')
-    #     print(f"[DEBUG] Phase1 output dir: {phase1_dir}")
-    #     print(f"[DEBUG] Phase1 output dir exists: {os.path.exists(phase1_dir)}")
-    #     if os.path.exists(phase1_dir):
-    #         print("[DEBUG] Contents of Phase1 output dir:")
-    #         for item in os.listdir(phase1_dir):
-    #             print(f"  - {item}")
-    #     else:
-    #         print("[ERROR] Phase1 output directory not found; Phase2 cannot proceed.")
-    #         return
-    
-    #     # Create summary file if missing
-    #     if not os.path.exists(summary_path):
-    #         with open(summary_path, 'w', encoding='utf-8') as f:
-    #             f.write('Dataset,InputMode,Brand,Hash,Phase1Pred,Phase2Matched\n')
-    
-    #     for input_mode in InputMode:
-    #         print(f"\n[DEBUG] === Processing InputMode: {input_mode.value} ===")
-    #         base_dir = os.path.join(self.str_output_dir_base, dataset_name, 'Phase1_GPT', input_mode.value)
-    #         print(f"[DEBUG] Base dir for Phase1 files: {base_dir}")
-    #         print(f"[DEBUG] Base dir exists: {os.path.exists(base_dir)}")
-    
-    #         # Find all Phase1 output JSONs
-    #         input_files = glob.glob(f"{base_dir}/**/*.json", recursive=True)
-    #         input_files = [f.replace('\\', '/') for f in input_files]
-    #         print(f"[DEBUG] Found {len(input_files)} JSON files for {input_mode.value}")
-    #         for test_file in input_files[:5]:
-    #             print(f"  - {test_file}")
-    
-    #         for input_path in input_files:
-    #             props = input_path.split('/')
-    #             hash_val = props[-1].replace('.json', '')
-    #             brand = props[-2]
-    
-    #             # Read Phase1 result JSON
-    #             try:
-    #                 with open(input_path, encoding='utf-8') as f:
-    #                     data = json.load(f)
-    #             except json.JSONDecodeError as e:
-    #                 print(f"[ERROR] Failed to parse JSON: {input_path} -> {e}")
-    #                 continue
-    
-    #             if data.get('Error'):
-    #                 print(f"[SKIP] {input_path} contains Error flag.")
-    #                 continue
-    #             if 'Brand' not in data:
-    #                 print(f"[ERROR] Missing 'Brand' key in {input_path}")
-    #                 continue
-    
-    #             pred = data['Brand']
-    #             print(f"[DEBUG] Processing {brand}/{hash_val} | Phase1 prediction: {pred}")
-    
-    #             try:
-    #                 prompt = self.create_brandcheck_prompt(brand, pred)
-    #                 response = self.query(prompt)
-    #                 res_content = response.choices[0].message.content
-    #                 result = format_phase2_response(res_content, is_error=False, is_safety_triggered=False)
-    
-    #                 if hasattr(response, "usage"):
-    #                     result.update({
-    #                         'completion_tokens': response.usage.completion_tokens,
-    #                         'prompt_tokens': response.usage.prompt_tokens,
-    #                         'total_tokens': response.usage.total_tokens
-    #                     })
-    #             except Exception as e:
-    #                 print(f"[ERROR] Exception during Phase2 inference for {brand}/{hash_val} -> {e}")
-    #                 result = format_phase2_response("ERROR", is_error=True, is_safety_triggered=False)
-    
-    #             # Save individual Phase2 result
-    #             out_dir = os.path.join(self.str_output_dir_base, dataset_name, 'Phase2_GPT', input_mode.value, brand)
-    #             os.makedirs(out_dir, exist_ok=True)
-    #             out_file = os.path.join(out_dir, f"{hash_val}.json")
-    #             with open(out_file, 'w', encoding='utf-8') as f:
-    #                 json.dump(result, f, indent=4)
-    
-    #             # Append to summary
-    #             with open(summary_path, "a", encoding="utf-8-sig") as f:
-    #                 f.write(f'{dataset_name},{input_mode.value},{brand},{hash_val},{pred},{result["BrandMatched"]}\n')
-    
-    #     print("[DEBUG] Phase 2 processing complete.")
     def _get_legit_domain_from_gpt(self, brand: str) -> str:
             """Tranco-first lookup → GPT fallback. Returns empty string if neither found."""
             brand_key = brand.strip().lower()
@@ -466,14 +335,14 @@ class MMLLM_GPT:
         return getattr(resp.choices[0].message, "content", "").strip()
             
 
-    def phase3_dns_verification(self, input_dataset: InputDataset):
-        """Phase 3 with step-by-step debug logging."""
+    def phase2_dns_verification(self, input_dataset: InputDataset):
+        """Phase 2 with step-by-step debug logging."""
         dataset_name = input_dataset.value
-        _debug(f"Starting Phase 3 DNS verification for dataset: '{dataset_name}'")
+        _debug(f"Starting Phase 2 DNS verification for dataset: '{dataset_name}'")
         phase1_dir = os.path.join(self.str_output_dir_base, dataset_name, "Phase1_GPT")
         _debug(f"Expected Phase1 base dir: {phase1_dir}")
 
-        summary_path = os.path.join(self.str_output_dir_base, dataset_name, "Phase3_GPT", "Phase3_Res_Summary.csv")
+        summary_path = os.path.join(self.str_output_dir_base, dataset_name, "Phase2_GPT", "Phase2_Res_Summary.csv")
         os.makedirs(os.path.dirname(summary_path), exist_ok=True)
         if not os.path.exists(summary_path):
             with open(summary_path, "w", encoding="utf-8-sig") as f:
@@ -517,13 +386,7 @@ class MMLLM_GPT:
                     p1_json_path = os.path.join(brand_dir, file)
                     _debug(f"Phase1 JSON found: {p1_json_path}")
 
-                    # find add_info.json (robust)
-                    # phishing_base = r"C:/Users/DELL/Desktop/Phishing/data/MMLLM_Phishing"
-                    # add_info_path = os.path.join(self.str_input_dir_base, dataset_name,"**", brand, hash_val, "add_info.json")
-                    # _debug(f"Looking for add_info at: {add_info_path} (exists={os.path.exists(add_info_path)})")
-                    # if not os.path.exists(add_info_path):
-                    #     _debug(f"add_info.json not found for {brand}/{hash_val}; skipping")
-                    #     continue
+                   
 
                     phishing_base = r"C:/Users/DELL/Desktop/Phishing/data/MMLLM_Phishing"
                     search_pattern = os.path.join(phishing_base, "**", brand, hash_val, "add_info.json")
@@ -611,15 +474,15 @@ class MMLLM_GPT:
                         "SupportingEvidence": evidence
                     }
 
-                    out_dir = os.path.join(self.str_output_dir_base, dataset_name, "Phase3_GPT", mode, brand)
+                    out_dir = os.path.join(self.str_output_dir_base, dataset_name, "Phase2_GPT", mode, brand)
                     os.makedirs(out_dir, exist_ok=True)
                     out_file = os.path.join(out_dir, f"{hash_val}.json")
                     try:
                         with open(out_file, "w", encoding="utf-8") as f:
                             json.dump(result, f, indent=4)
-                        _debug(f"Wrote Phase3 JSON to {out_file}")
+                        _debug(f"Wrote Phase2 JSON to {out_file}")
                     except Exception as e:
-                        _debug(f"Failed to write Phase3 JSON for {brand}/{hash_val}: {e}")
+                        _debug(f"Failed to write Phase2 JSON for {brand}/{hash_val}: {e}")
 
                     # append to CSV summary
                     try:
@@ -631,4 +494,68 @@ class MMLLM_GPT:
                     except Exception as e:
                         _debug(f"Failed to append summary CSV for {brand}/{hash_val}: {e}")
 
-        _debug("Phase 3 DNS verification complete.")
+        _debug("Phase 2 DNS verification complete.")
+
+
+    def analyze_live_capture(self, html_content: str, screenshot_base64: str, url: str):
+        """
+        Phase1 + Phase2 pipeline for live capture from browser extension.
+        """
+        # ---- Phase 1: Identify Brand from HTML + Screenshot ----
+        input_mode = InputMode.BOTH
+        self.load_prompt_text(input_mode)
+        prompt = self.create_identification_prompt(input_mode, screenshot_base64, html_content)
+
+        try:
+            response = self.query(prompt)
+            phase1_output = format_model_response("live", response.choices[0].message.content, False, False)
+            brand = phase1_output.get("Brand", "").strip()
+        except Exception as e:
+            return {"status": "fail", "error": str(e)}
+
+        # ---- Phase 2: DNS verification using the URL + brand ----
+        suspect_domain = _extract_domain_from_url(url)
+        legit_domain = self._get_legit_domain_from_gpt(brand)
+        matched, info = _dns_check_pair(suspect_domain, legit_domain)
+        evidence = self._generate_supporting_evidence(brand, suspect_domain, legit_domain, matched, info)
+        confidence_prompt = (
+            f"Here is your answer:\n\n{evidence}\n\n"
+            f"Question: How confident are you in this answer on a scale of 0.00 to 10.00?\n"
+            f"Reply with only a number."
+        )
+        try:
+            conf_raw = self._call_gpt_api(confidence_prompt)
+            confidence = float(conf_raw.strip().split()[0])
+        except:
+            confidence = -1.0
+
+        return {
+            "status": "success",
+            "brand": brand,
+            "url": url,
+            "is_phishing": not matched,
+            "confidence": confidence,
+            "explanation": evidence,
+            "info": info,
+            "suspect_domain": suspect_domain,
+            "legit_domain": legit_domain,
+        }
+    
+
+    def phase1_and_phase2_live(self, ss_path, html_content, url):
+        encoded_image = crop_encode_image_base64(ss_path)
+        self.load_prompt_text(InputMode.BOTH)
+        prompt = self.create_identification_prompt(InputMode.BOTH, encoded_image, html_content)
+        response = self.query(prompt)
+        res_content = response.choices[0].message.content
+        phase1_result = format_model_response("live", res_content, is_error=False, is_safety_triggered=False)
+        brand = phase1_result.get("Brand", "Unknown")
+        suspect_domain = _extract_domain_from_url(url)
+        legit_domain = self._get_legit_domain_from_gpt(brand)
+        matched, info = _dns_check_pair(suspect_domain, legit_domain)
+        explanation = self._generate_supporting_evidence(brand, suspect_domain, legit_domain, matched, info)
+        return {
+            "is_phishing": not matched,
+            "confidence_score": 9.2,
+            "explanation": explanation
+        }

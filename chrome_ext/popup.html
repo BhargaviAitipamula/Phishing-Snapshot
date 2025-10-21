@@ -1,19 +1,52 @@
-<!DOCTYPE html>
+<!-- <!doctype html>
 <html>
 <head>
+  <meta charset="utf-8" />
   <title>Phishing Detector</title>
   <style>
-    body { font-family: Arial, sans-serif; background-color: #121212; color: #eee; padding: 10px; width: 260px; }
-    button { width: 100%; padding: 8px; background: #1f6feb; border: none; color: white; border-radius: 6px; cursor: pointer; }
-    button:hover { background: #125ccc; }
-    #result { margin-top: 15px; padding: 10px; background: #1e1e1e; border-radius: 6px; font-size: 14px; word-wrap: break-word; }
+    body { font-family: Arial, sans-serif; width: 340px; padding: 12px; }
+    #status { margin-bottom: 8px; }
+    .ok { color: green; font-weight: bold; }
+    .warn { color: red; font-weight: bold; }
+    pre { white-space: pre-wrap; font-size: 12px; max-height: 200px; overflow: auto; }
   </style>
 </head>
 <body>
   <h3>Phishing Detector</h3>
-  <button id="checkBtn">Check This Page</button>
-  <div id="result">Result will appear here.</div>
+  <div id="status">Analyzing page... <small>(auto)</small></div>
+  <div id="result"></div>
 
   <script src="popup.js"></script>
 </body>
+</html> -->
+
+<!-- 
+<!DOCTYPE html>
+<html>
+  <head><meta charset="utf-8"><title>PD Test</title></head>
+  <body>
+    <h3>Phishing Detector Test</h3>
+    <script src="popup.js"></script>
+  </body>
+</html> -->
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Phishing Detector</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        width: 280px;
+        padding: 10px;
+      }
+      h3 { margin-bottom: 8px; }
+      p { margin: 6px 0; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <div id="status">Clicking the extension will start analysis...</div>
+    <script src="popup.js"></script>
+  </body>
 </html>

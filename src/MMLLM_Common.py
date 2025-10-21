@@ -5,9 +5,6 @@ import base64
 from io import BytesIO
 import os
 
-# ========== Enums ==========
-class Phase2Mode(Enum):
-    Phase2 = 'phase2'
 
 class InputMode(Enum):
     SS = 'ss'
@@ -33,7 +30,7 @@ dict_system_prompt_path = {
     InputMode.SS: '../prompts/system_prompt_ss.txt',
     InputMode.HTML: '../prompts/system_prompt_html.txt',
     InputMode.BOTH: '../prompts/system_prompt_both.txt',
-    Phase2Mode.Phase2: '../prompts/system_prompt_phase2.txt'        
+      
 }
 
 dict_response_prompt_path = {
