@@ -8,27 +8,16 @@ Traditional anti-phishing tools depend on URL blacklists, heuristic filters, or 
 Our approach provides an adaptive, explainable, and real-time detection mechanism that analyzes both the page layout (image) and HTML semantics (text) to make confident predictions.
 
 2. Motivation
-
 Modern phishing attacks are not limited to suspicious URLs — they now use:
-
 Visually cloned websites (brand spoofing)
-
 AI-generated fake login portals
-
 Trusted SSL certificates on malicious domains
-
 Redirect chains between emails and webpages
-
 Existing detectors often misclassify such pages because:
-
 They rely solely on URL/domain lists.
-
 They ignore the visual identity of brands.
-
 They lack reasoning or transparency in their decisions.
-
 Hence, Phishing Snapshot introduces a multimodal reasoning pipeline:
-
 🔹 GPT-4o-mini for semantic + visual understanding
 🔹 WHOIS & DNS checks for technical legitimacy
 🔹 Chrome Extension for real-time end-user protection
@@ -111,18 +100,14 @@ Workflow:
 🧾 5. Dataset Overview
 Dataset Type	Description	Example Brands
 Multimodal JSON Dataset	Structured HTML and screenshot pairs for brand identification	Apple, PayPal, Tesla, Netflix
-Logo Classification (Real vs Fake)	Used to train ViT classifier	Adidas, Amazon, BMW, Coca-Cola
 Phishing Case Study Dataset	URLs, WHOIS, and HTML attributes	Benign & malicious websites
-
-All image datasets were normalized (224×224), augmented (flips, brightness), and used for fine-tuning pre-trained Vision Transformers.
 
 6. Evaluation Metrics
 Metric	Purpose	Model/Phase	Result
-Accuracy	Image classification (real/fake logos)	ViT	100% (on 800+ samples)
 Precision	Domain legitimacy	DNS/WHOIS + GPT	96%
 Recall	Brand recognition	GPT-4o-mini	92%
 F1-Score	Overall phase integration	All Phases	94%
-Inference Time	Live detection speed	Extension + API	~2.4 sec/page
+Inference Time	Live detection speed	Extension + API	~6.4 sec/page
 
 7. Key Strengths
 ✅ Multimodal Analysis (Visual + Text + Domain)
@@ -134,80 +119,45 @@ Inference Time	Live detection speed	Extension + API	~2.4 sec/page
 
 🚀 8. Setup Instructions
 Step 1 — Clone Repository
-git clone https://github.com/<your-username>/Phishing-Snapshot.git
+git clone https://github.com/BhargaviAitipamula/Phishing-Snapshot.git
 cd Phishing-Snapshot/src
-
 Step 2 — Install Dependencies
 pip install -r requirements.txt
-
 Step 3 — Configure API Key
-
 In MMLLM_main.py:
-
 gpt_exp = MMLLM_GPT("your_openai_api_key")
-
 Step 4 — Run Backend
 python MMLLM_main.py
-
 Step 5 — Load Chrome Extension
-
 Open chrome://extensions
-
 Enable Developer mode
-
 Click Load Unpacked → select /extension folder
-
 Click Analyze Page to test phishing detection
-
 🧭 9. Usage Guide
-
 Navigate to any site (e.g., paypal-login.securepage.net).
-
 Click the extension button → data captured.
-
 GPT identifies “PayPal” brand.
-
 DNS/WHOIS finds mismatch between domains.
-
 Extension popup shows:
-
 Brand: PayPal
-
 Confidence: 9.2
-
 Status: 🚨 Phishing detected
-
 Reason: Domain mismatch + fake SSL
-
-🔮 10. Future Enhancements
-🧩 1. Flexible Chrome Extension
-
-Allow users to choose analysis mode:
-
-Only HTML
-
-Only Screenshot
-
-Both (Multimodal)
-
-🔐 2. SSL/TLS Certificate Analysis
-
-Integrate certificate validation logic:
-
-Verify issuer trust, domain binding, certificate age, and signature chain.
-
-Flag new or mismatched certificates.
-
-📧 3. Email-to-Webpage Phishing Linkage
-
-Parse phishing emails.
-
-Extract hyperlinks.
-
-Map them to landing pages.
-
-Trace attacker campaign chains for complete phishing trail visibility.
-
+10. Future Enhancements
+  1. Flexible Chrome Extension
+      Allow users to choose analysis mode:
+      Only HTML
+      Only Screenshot
+      Both (Multimodal)
+   2. SSL/TLS Certificate Analysis
+      Integrate certificate validation logic:
+      Verify issuer trust, domain binding, certificate age, and signature chain.
+      Flag new or mismatched certificates.
+   3. Email-to-Webpage Phishing Linkage
+      Parse phishing emails.
+      Extract hyperlinks.
+      Map them to landing pages.
+      Trace attacker campaign chains for complete phishing trail visibility.
 11. Repository Structure
 Phishing-Snapshot/
 │
@@ -235,8 +185,4 @@ Phishing-Snapshot/
 │
 └── README.md
 
-🎥 12. Demo Video
-
-🎬 Click here for Demo Video (Unstop Submission)
-
-(Add your YouTube or Drive demo link here)
+12. Demo Video
