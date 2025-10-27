@@ -118,24 +118,6 @@ def format_model_response(folder_hash, response_text: str, is_error: bool = Fals
         "Error": b_error
     }
 
-# ========== Phase 2 Response Formatter ==========
-
-def format_phase2_response(response_text: str, is_error: bool, is_safety_triggered: bool):
-    if is_error:
-        return {"BrandMatched": False, "Explanation": "Error Occurred", "Error": True}
-    elif is_safety_triggered:
-        return {"BrandMatched": False, "Explanation": "Safety Reasons", "Error": True}
-    elif "payload size exceeds the limit" in response_text:
-        return {"BrandMatched": False, "Explanation": "Payload exceeds limit", "Error": True}
-    elif len(response_text.strip()) == 0:
-        return {"BrandMatched": False, "Explanation": "Indeterminate", "Error": True}
-    else:
-        return {
-            "BrandMatched": search_for_response(r'BrandMatch: (.+)', response_text),
-            "Explanation": search_for_response(r'Explanation: (.+)', response_text),
-            "Error": False
-        }
-
 # ========== Unzipped Data Loader ==========
 
 def load_unzipped_data(data_dir):
