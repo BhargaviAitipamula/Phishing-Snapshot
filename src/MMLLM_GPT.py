@@ -61,6 +61,55 @@ def _dns_check_pair(suspect: str, legit: str):
         return False, "Nameserver mismatch"
     return False, "Insufficient DNS/WHOIS signals"
 
+def _get_ssl_details(self, domain: str, timeout: float = 5.0):
+    """
+    Retrieve SSL/TLS certificate details including issuer, common name, and certificate age.
+    Returns a dict with SSL info. No external API required.
+    """
+    import ssl, socket, datetime
+    ssl_info = {
+        "SSL_Valid": False,
+        "SSL_Issuer": None,
+        "SSL_CommonName": None,
+        "SSL_NotBefore": None,
+        "SSL_NotAfter": None,
+        "SSL_AgeDays": None,
+        "Error": None
+    }
+    try:
+        ctx = ssl.create_default_context()
+        with ctx.wrap_socket(socket.socket(), server_hostname=domain) as s:
+            s.settimeout(timeout)
+            s.connect((domain, 443))
+            cert = s.getpeercert()
+
+        subject = dict(x[0] for x in cert.get("subject", [])) if cert.get("subject") else {}
+        issuer = dict(x[0] for x in cert.get("issuer", [])) if cert.get("issuer") else {}
+
+        not_before = cert.get("notBefore")
+        not_after = cert.get("notAfter")
+
+        ssl_info.update({
+            "SSL_Valid": True,
+            "SSL_Issuer": issuer.get("organizationName") or issuer.get("commonName"),
+            "SSL_CommonName": subject.get("commonName"),
+            "SSL_NotBefore": not_before,
+            "SSL_NotAfter": not_after
+        })
+
+        # Calculate certificate age in days
+        try:
+            nb = datetime.datetime.strptime(not_before, "%b %d %H:%M:%S %Y %Z")
+            now = datetime.datetime.utcnow()
+            ssl_info["SSL_AgeDays"] = (now - nb).days
+        except Exception:
+            ssl_info["SSL_AgeDays"] = None
+
+    except Exception as e:
+        ssl_info["Error"] = str(e)
+
+    return ssl_info
+
 class MMLLM_GPT:
     def __init__(self, str_api_key:str):
         self.str_api_key = str_api_key
@@ -496,28 +545,68 @@ class MMLLM_GPT:
 
         _debug("Phase 2 DNS verification complete.")
 
-
     def analyze_live_capture(self, html_content: str, screenshot_base64: str, url: str):
         """
-        Phase1 + Phase2 pipeline for live capture from browser extension.
+        Phase 1 + Phase 3 verification for live Chrome Extension captures.
+        Now includes SSL/TLS certificate analysis.
         """
-        # ---- Phase 1: Identify Brand from HTML + Screenshot ----
+        _debug("[PHASE4] Starting Live Capture Analysis")
+    
         input_mode = InputMode.BOTH
         self.load_prompt_text(input_mode)
         prompt = self.create_identification_prompt(input_mode, screenshot_base64, html_content)
-
+    
+        # --- Phase 1: Brand identification ---
         try:
             response = self.query(prompt)
             phase1_output = format_model_response("live", response.choices[0].message.content, False, False)
             brand = phase1_output.get("Brand", "").strip()
+            _debug(f"[PHASE4] Brand identified: {brand}")
         except Exception as e:
             return {"status": "fail", "error": str(e)}
-
-        # ---- Phase 2: DNS verification using the URL + brand ----
+    
+        # --- Phase 3: Domain verification ---
         suspect_domain = _extract_domain_from_url(url)
         legit_domain = self._get_legit_domain_from_gpt(brand)
         matched, info = _dns_check_pair(suspect_domain, legit_domain)
-        evidence = self._generate_supporting_evidence(brand, suspect_domain, legit_domain, matched, info)
+        _debug(f"[PHASE4] DNS check done → matched={matched}, info={info}")
+    
+        # --- SSL/TLS Certificate Analysis ---
+        ssl_details = self._get_ssl_details(suspect_domain)
+        if ssl_details["SSL_Valid"]:
+            ssl_comment = (
+                f"SSL valid; issued by {ssl_details['SSL_Issuer']}; "
+                f"certificate age ≈ {ssl_details['SSL_AgeDays']} days."
+            )
+        else:
+            ssl_comment = f"SSL invalid or error: {ssl_details.get('Error', 'Unknown')}"
+    
+        _debug(f"[PHASE4] SSL info summary: {ssl_comment}")
+    
+        # --- Generate supporting explanation via GPT ---
+        combined_info = f"{info}; {ssl_comment}"
+        evidence = self._generate_evidence(brand, suspect_domain, legit_domain, matched, combined_info, ssl_details)
+        # --- Generate supporting explanation via GPT ---
+        combined_info = f"{info}; {ssl_comment}"
+        evidence = self._generate_evidence(brand, suspect_domain, legit_domain, matched, combined_info, ssl_details)
+        
+        # Ensure SSL info always appears in explanation
+        if ssl_details:
+            if ssl_details.get("SSL_Valid"):
+                extra_ssl_text = (
+                    f"\n\n🔒 SSL Certificate Details:\n"
+                    f"Issuer: {ssl_details.get('SSL_Issuer', 'Unknown')}\n"
+                    f"Common Name: {ssl_details.get('SSL_CommonName', 'N/A')}\n"
+                    f"Valid From: {ssl_details.get('SSL_NotBefore', 'N/A')}\n"
+                    f"Valid Until: {ssl_details.get('SSL_NotAfter', 'N/A')}\n"
+                    f"Certificate Age: {ssl_details.get('SSL_AgeDays', 'N/A')} days\n"
+                )
+            else:
+                extra_ssl_text = f"\n\n⚠️ SSL Certificate Error: {ssl_details.get('Error', 'Unknown')}"
+            evidence += extra_ssl_text
+
+    
+        # --- Confidence estimation ---
         confidence_prompt = (
             f"Here is your answer:\n\n{evidence}\n\n"
             f"Question: How confident are you in this answer on a scale of 0.00 to 10.00?\n"
@@ -526,36 +615,98 @@ class MMLLM_GPT:
         try:
             conf_raw = self._call_gpt_api(confidence_prompt)
             confidence = float(conf_raw.strip().split()[0])
-        except:
+        except Exception:
             confidence = -1.0
-
+    
+        # --- Final Output ---
         return {
             "status": "success",
             "brand": brand,
             "url": url,
+            "suspect_domain": suspect_domain,
+            "legit_domain": legit_domain,
             "is_phishing": not matched,
             "confidence": confidence,
             "explanation": evidence,
             "info": info,
-            "suspect_domain": suspect_domain,
-            "legit_domain": legit_domain,
+            "ssl_details": ssl_details,
         }
-    
-
     def phase1_and_phase2_live(self, ss_path, html_content, url):
+        """
+        Phase 1 + Phase 3 (SSL/TLS + GPT evidence) pipeline for browser extension live capture.
+        """
+        # ---------- Phase 1: Brand Identification ----------
         encoded_image = crop_encode_image_base64(ss_path)
         self.load_prompt_text(InputMode.BOTH)
         prompt = self.create_identification_prompt(InputMode.BOTH, encoded_image, html_content)
-        response = self.query(prompt)
-        res_content = response.choices[0].message.content
-        phase1_result = format_model_response("live", res_content, is_error=False, is_safety_triggered=False)
-        brand = phase1_result.get("Brand", "Unknown")
+        
+        try:
+            response = self.query(prompt)
+            res_content = response.choices[0].message.content
+            phase1_result = format_model_response("live", res_content, is_error=False, is_safety_triggered=False)
+            brand = phase1_result.get("Brand", "Unknown")
+        except Exception as e:
+            return {"status": "fail", "error": str(e)}
+    
+        # ---------- Phase 3: SSL/TLS Verification ----------
+        import ssl
+        import socket
+        from datetime import datetime
+    
+        def fetch_ssl_info(domain):
+            try:
+                ctx = ssl.create_default_context()
+                with socket.create_connection((domain, 443), timeout=5) as sock:
+                    with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
+                        cert = ssock.getpeercert()
+                issuer = dict(x[0] for x in cert.get("issuer", ())).get("organizationName", "")
+                subject = dict(x[0] for x in cert.get("subject", ())).get("commonName", "")
+                not_before = datetime.strptime(cert["notBefore"], "%b %d %H:%M:%S %Y %Z")
+                not_after = datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
+                days_valid = (not_after - not_before).days
+                valid_now = not_before <= datetime.utcnow() <= not_after
+                return {
+                    "SSL_Valid": valid_now,
+                    "SSL_Issuer": issuer,
+                    "SSL_CommonName": subject,
+                    "SSL_NotBefore": not_before.isoformat(),
+                    "SSL_NotAfter": not_after.isoformat(),
+                    "SSL_AgeDays": days_valid,
+                }
+            except Exception as e:
+                return {"SSL_Valid": False, "SSL_Error": str(e)}
+    
+        # ---------- Domain + SSL Info ----------
         suspect_domain = _extract_domain_from_url(url)
         legit_domain = self._get_legit_domain_from_gpt(brand)
+        ssl_info = fetch_ssl_info(suspect_domain)
+    
+        # Combine info summary
+        if ssl_info.get("SSL_Valid"):
+            ssl_text = (
+                f"The SSL certificate is valid, issued by '{ssl_info.get('SSL_Issuer')}', "
+                f"and is active for about {ssl_info.get('SSL_AgeDays')} days."
+            )
+        else:
+            ssl_text = f"The SSL certificate is invalid or missing ({ssl_info.get('SSL_Error', 'N/A')})."
+    
+        # DNS check
         matched, info = _dns_check_pair(suspect_domain, legit_domain)
-        explanation = self._generate_supporting_evidence(brand, suspect_domain, legit_domain, matched, info)
+    
+        # ---------- Generate GPT-based Supporting Evidence ----------
+        evidence = self._generate_supporting_evidence(
+            brand=brand,
+            suspect=suspect_domain,
+            legit=legit_domain,
+            matched=matched,
+            info=f"{info}; {ssl_text}"
+        )
+    
+        # ---------- Final Output ----------
         return {
             "is_phishing": not matched,
             "confidence_score": 9.2,
-            "explanation": explanation
+            "explanation": evidence,  # ✅ uses GPT-generated evidence
+            "ssl_details": ssl_info,
         }
+
