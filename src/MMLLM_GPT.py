@@ -701,11 +701,22 @@ class MMLLM_GPT:
             matched=matched,
             info=f"{info}; {ssl_text}"
         )
+        # --- Confidence estimation ---
+        confidence_prompt = (
+            f"Here is your answer:\n\n{evidence}\n\n"
+            f"Question: How confident are you in this answer on a scale of 0.00 to 10.00?\n"
+            f"Reply with only a number."
+        )
+        try:
+            conf_raw = self._call_gpt_api(confidence_prompt)
+            confidence = float(conf_raw.strip().split()[0])
+        except Exception:
+            confidence = -1.0
     
         # ---------- Final Output ----------
         return {
             "is_phishing": not matched,
-            "confidence_score": 9.2,
+            "confidence_score": confidence,
             "explanation": evidence,  # ✅ uses GPT-generated evidence
             "ssl_details": ssl_info,
         }
