@@ -1,57 +1,3 @@
-// // popup.js - runs when popup.html loads
-// const statusEl = document.getElementById("status");
-// const resultEl = document.getElementById("result");
-
-// // Send a message to background to capture and analyze
-// function startAnalysis() {
-//   statusEl.textContent = "Analyzing page... (capturing screenshot & HTML)";
-//   resultEl.innerHTML = "";
-
-//   chrome.runtime.sendMessage({ type: "capture_and_analyze" }, (resp) => {
-//     if (!resp) {
-//       statusEl.textContent = "Error: no response from background";
-//       return;
-//     }
-//     if (resp.status === "error") {
-//       statusEl.textContent = "Error during capture: " + resp.error;
-//       resultEl.innerHTML = `<pre>${resp.error}</pre>`;
-//       return;
-//     }
-
-//     const payload = resp.data;
-//     if (payload.status === "fail") {
-//       statusEl.textContent = "Model error";
-//       resultEl.innerHTML = `<pre>${payload.error || JSON.stringify(payload)}</pre>`;
-//       return;
-//     }
-
-//     // Successful response object from your Flask / model backend
-//     statusEl.textContent = "Done.";
-//     const isPhishing = payload.is_phishing ? "⚠️ Phishing Detected" : "✅ Likely Legitimate";
-//     const color = payload.is_phishing ? "warn" : "ok";
-
-//     resultEl.innerHTML = `
-//       <p><span class="${color}">${isPhishing}</span></p>
-//       <p><b>Brand:</b> ${payload.brand || "Unknown"}</p>
-//       <p><b>Confidence:</b> ${payload.confidence}</p>
-//       <p><b>Explanation:</b></p>
-//       <pre>${payload.explanation || "No explanation returned."}</pre>
-//       <p style="font-size:11px;color:#666"><b>Suspect:</b> ${payload.suspect_domain || ""} &nbsp; <b>Legit:</b> ${payload.legit_domain || ""}</p>
-//     `;
-//   });
-// }
-
-// // Auto-start when popup loads
-// startAnalysis();
-
-
-// // console.log("[Popup] sending ping...");
-// // chrome.runtime.sendMessage({ type: "ping" }, (resp) => {
-// //   console.log("[Popup] response:", resp);
-// //   if (!resp) document.body.innerHTML += "<p style='color:red'>No response from background</p>";
-// //   else document.body.innerHTML += `<p style='color:green'>Background replied: ${resp.reply}</p>`;
-// // });
-
 document.addEventListener("DOMContentLoaded", async () => {
   const status = document.getElementById("status");
   status.innerText = "Analyzing page... (capturing screenshot & HTML)";
@@ -60,20 +6,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    // Capture screenshot
+    // --- Capture screenshot ---
     const screenshotRaw = await chrome.tabs.captureVisibleTab(null, { format: "png" });
 
-    // Compress it using canvas in popup context (DOM allowed)
+    // Compress image before sending
     const screenshot = await compressImage(screenshotRaw);
     console.log("[Popup] Screenshot captured & compressed");
 
-    // Extract simplified HTML info
+    // --- Extract simplified HTML info ---
     const [{ result: html_summary }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: () => {
         const title = document.title;
         const metas = Array.from(document.querySelectorAll("meta"))
-          .map(m => `${m.name || m.property || "meta"}:${m.content || ""}`)
+          .map(m => `${m.name || m.property || "meta"}: ${m.content || ""}`)
           .slice(0, 30)
           .join("\n");
         const links = Array.from(document.querySelectorAll("a"))
@@ -92,7 +38,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     console.log("[Popup] HTML summary captured");
 
-    // Send to background to handle Flask API call
+    // --- Send to background for Flask API call ---
     chrome.runtime.sendMessage(
       {
         type: "analyze_page",
@@ -102,8 +48,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       },
       (resp) => {
         console.log("[Popup] Got response:", resp);
+
         if (!resp) {
-          status.innerText = "Error: no response from background";
+          status.innerText = "Error: No response from background script.";
           return;
         }
         if (resp.error) {
@@ -111,12 +58,44 @@ document.addEventListener("DOMContentLoaded", async () => {
           return;
         }
 
-        const { is_phishing, confidence_score, explanation } = resp;
+        const {
+          is_phishing,
+          confidence,
+          confidence_score,
+          explanation,
+          ssl_details
+        } = resp;
+
+        const confValue = confidence ?? confidence_score ?? "N/A";
+
+        // --- Build SSL info section ---
+        let sslSection = "";
+        if (ssl_details) {
+          if (ssl_details.SSL_Valid) {
+            sslSection = `
+              <div style="margin-top:10px; border-top:1px solid #ccc; padding-top:8px;">
+                <b>🔒 SSL Certificate Details:</b><br>
+                Issuer: ${ssl_details.SSL_Issuer || "Unknown"}<br>
+                Common Name: ${ssl_details.SSL_CommonName || "N/A"}<br>
+                Valid From: ${ssl_details.SSL_NotBefore || "N/A"}<br>
+                Valid Until: ${ssl_details.SSL_NotAfter || "N/A"}<br>
+                Certificate Age: ${ssl_details.SSL_AgeDays || "N/A"} days
+              </div>`;
+          } else {
+            sslSection = `
+              <div style="margin-top:10px; border-top:1px solid #ccc; padding-top:8px;">
+                <b>⚠️ SSL Certificate Error:</b> ${ssl_details.Error || "Unavailable"}
+              </div>`;
+          }
+        }
+
+        // --- Display result on popup ---
         status.innerHTML = `
-          <h3>Phishing Detector Result</h3>
+          <h3 style="margin-bottom:6px;">Phishing Detector Result</h3>
           <p><b>Phishing:</b> ${is_phishing ? "⚠️ Yes" : "✅ No"}</p>
-          <p><b>Confidence:</b> ${confidence_score?.toFixed(2) ?? "N/A"} / 10</p>
-          <p><b>Explanation:</b> ${explanation || "No explanation available"}</p>
+          <p><b>Confidence:</b> ${confValue.toFixed ? confValue.toFixed(2) : confValue} / 10</p>
+          <p><b>Explanation:</b> ${explanation || "No explanation available."}</p>
+          ${sslSection}
         `;
       }
     );
@@ -125,6 +104,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     status.innerText = `Error: ${err.message}`;
   }
 });
+
+// --- Helper: Compress screenshot image before sending ---
+async function compressImage(dataUrl, maxWidth = 640, maxHeight = 480, quality = 0.7) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let { width, height } = img;
+
+      // Maintain aspect ratio
+      if (width > height) {
+        if (width > maxWidth) {
+          height = Math.round((height *= maxWidth / width));
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = Math.round((width *= maxHeight / height));
+          height = maxHeight;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality).split(",")[1]); // Return base64
+    };
+    img.src = dataUrl;
+  });
+}
 
 // compressImage uses DOM canvas (works only in popup, not background)
 function compressImage(base64Image, maxWidth = 400) {
@@ -142,4 +153,3 @@ function compressImage(base64Image, maxWidth = 400) {
     img.src = base64Image;
   });
 }
-
